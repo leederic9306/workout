@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Workout",
+    "slug": "workout",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "workout",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.leederic9306.workout"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}

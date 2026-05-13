@@ -1,0 +1,11 @@
+{
+  "name": "@workout/constants",
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

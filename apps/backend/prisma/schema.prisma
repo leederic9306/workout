@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 사용자 역할
+enum UserRole {
+  ADMIN
+  PREMIUM
+  USER
+}
+
+// 소셜 로그인 제공자
+enum SocialProvider {
+  KAKAO
+  GOOGLE
+}
+
+// 성별
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+// 운동 경험 수준
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+// 사용자 모델
+model User {
+  id                String           @id @default(cuid())
+  email             String           @unique
+  passwordHash      String?
+  nickname          String?
+  gender            Gender?
+  birthDate         DateTime?
+  height            Float?
+  experienceLevel   ExperienceLevel?
+  role              UserRole         @default(USER)
+  socialProvider    SocialProvider?
+  socialId          String?
+  inviteCodeUsed    String?
+  refreshTokenHash  String?
+  emailVerified     Boolean          @default(false)
+  premiumExpiresAt  DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // 관계
+  inviteCodesUsed   InviteCode[]      @relation("InviteCodeUsedBy")
+  roleChangesTarget RoleChangeLog[]   @relation("RoleChangeTarget")
+  roleChangesActor  RoleChangeLog[]   @relation("RoleChangeActor")
+  favoriteExercises UserExerciseFavorite[]
+  workoutSessions   WorkoutSession[]
+  oneRepMaxes       OneRepMax[]
+  programs          Program[]
+  userProgram       UserProgram?
+  aiUsageLogs       AiUsageLog[]
+  bodyCompositions  BodyComposition[]
+
+  @@unique([socialProvider, socialId])
+  @@index([email])
+}
+
+// 체성분 기록 모델 (SPEC-DASHBOARD-001)
+// @MX:NOTE: weight는 필수, muscleMass/bodyFatPct는 선택 입력
+model BodyComposition {
+  id         String   @id @default(uuid())
+  userId     String
+  weight     Decimal  @db.Decimal(5, 2)
+  muscleMass Decimal? @db.Decimal(5, 2)
+  bodyFatPct Decimal? @db.Decimal(4, 1)
+  recordedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, recordedAt(sort: Desc)])
+}
+
+// 초대 코드 모델
+model InviteCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedBy    String?
+  usedAt    DateTime?
+
+  // 관계
+  user      User?     @relation("InviteCodeUsedBy", fields: [usedBy], references: [id])
+
+  @@index([code])
+}
+
+// 역할 변경 이력 모델
+model RoleChangeLog {
+  id              String   @id @default(cuid())
+  targetUserId    String
+  changedByUserId String
+  fromRole        UserRole
+  toRole          UserRole
+  reason          String
+  createdAt       DateTime @default(now())
+
+  // 관계
+  targetUser    User @relation("RoleChangeTarget", fields: [targetUserId], references: [id])
+  changedByUser User @relation("RoleChangeActor", fields: [changedByUserId], references: [id])
+
+  @@index([targetUserId])
+}
+
+// 운동 종목 모델 (free-exercise-db에서 시드)
+model Exercise {
+  id               String   @id @default(cuid())
+  externalId       String   @unique
+  name             String
+  force            String?
+  level            String
+  mechanic         String?
+  equipment        String?
+  primaryMuscles   String[]
+  secondaryMuscles String[]
+  instructions     String[]
+  category         String
+  images           String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  favoritedBy      UserExerciseFavorite[]
+  workoutSets      WorkoutSet[]
+  programExercises ProgramExercise[]
+
+  @@index([equipment])
+  @@index([category])
+}
+
+// 사용자별 운동 즐겨찾기
+model UserExerciseFavorite {
+  id          String   @id @default(cuid())
+  userId      String
+  exerciseId  String
+  favoritedAt DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise    Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId])
+}
+
+// 세션 상태 enum
+enum SessionStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+// 운동 세션 모델
+model WorkoutSession {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String?
+  notes       String?
+  status      SessionStatus @default(IN_PROGRESS)
+  startedAt   DateTime      @default(now())
+  completedAt DateTime?
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sets        WorkoutSet[]
+
+  @@index([userId, status])
+  @@index([userId, startedAt(sort: Desc)])
+}
+
+// 세트 기록 모델
+model WorkoutSet {
+  id         String         @id @default(cuid())
+  sessionId  String
+  exerciseId String
+  setNumber  Int
+  reps       Int?
+  weight     Float?
+  duration   Int?
+  notes      String?
+  recordedAt DateTime       @default(now())
+
+  session    WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise   Exercise       @relation(fields: [exerciseId], references: [id])
+
+  @@index([sessionId])
+}
+
+// 컴파운드 운동 5종 (SPEC-1RM-001)
+enum CompoundType {
+  SQUAT
+  DEADLIFT
+  BENCH_PRESS
+  BARBELL_ROW
+  OVERHEAD_PRESS
+}
+
+// 1RM 출처
+enum OrmSource {
+  DIRECT_INPUT
+  ESTIMATED
+}
+
+// 1RM (One Repetition Maximum) 모델 - 컴파운드별 사용자 1RM
+model OneRepMax {
+  id           String       @id @default(cuid())
+  userId       String
+  exerciseType CompoundType
+  value        Float
+  source       OrmSource    @default(DIRECT_INPUT)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseType])
+  @@index([userId])
+}
+
+// 프로그램 타입 (SPEC-PROGRAM-001)
+enum ProgramType {
+  CATALOG
+  AI_GENERATED
+}
+
+// 운동 프로그램 모델
+model Program {
+  id          String      @id @default(cuid())
+  title       String
+  description String
+  type        ProgramType
+  level       String      // beginner | intermediate | advanced
+  frequency   Int         // days per week
+  createdBy   String?     // CATALOG는 null, AI_GENERATED는 userId
+  isPublic    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // 관계
+  creator     User?         @relation(fields: [createdBy], references: [id])
+  days        ProgramDay[]
+  userProgram UserProgram[]
+
+  @@index([type])
+  @@index([createdBy])
+}
+
+// 프로그램 일(day) 모델
+model ProgramDay {
+  id        String            @id @default(cuid())
+  programId String
+  dayNumber Int
+  name      String
+
+  program   Program           @relation(fields: [programId], references: [id], onDelete: Cascade)
+  exercises ProgramExercise[]
+
+  @@unique([programId, dayNumber])
+}
+
+// 프로그램 일 내 운동 모델
+model ProgramExercise {
+  id         String  @id @default(cuid())
+  dayId      String
+  exerciseId String
+  orderIndex Int
+  sets       Int
+  reps       String  // 예: "5", "8-12"
+  weightNote String?
+
+  day      ProgramDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  exercise Exercise   @relation(fields: [exerciseId], references: [id])
+
+  @@unique([dayId, orderIndex])
+  @@index([dayId])
+}
+
+// 사용자 활성 프로그램 모델
+// @MX:NOTE: @@unique([userId])로 사용자당 활성 프로그램 1개 강제
+model UserProgram {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  programId String
+  startedAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [programId], references: [id])
+}
+
+// AI 사용 로그 모델
+// @MX:NOTE: catalogRecs, reevaluations 컬럼은 SPEC-AI-001용으로 예약
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  userId           String
+  month            String   // "YYYY-MM"
+  programCreations Int      @default(0)
+  catalogRecs      Int      @default(0)
+  reevaluations    Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+  @@index([userId])
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@workout/types": ["../../packages/types/src"],
+      "@workout/utils": ["../../packages/utils/src"],
+      "@workout/constants": ["../../packages/constants/src"]
+    }
+  }
+}
