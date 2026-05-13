@@ -2,8 +2,7 @@
   "name": "@workout/backend",
   "version": "0.0.1",
   "scripts": {
-    "prebuild": "prisma generate",
-    "build": "nest build",
+    "build": "prisma generate --schema=./prisma/schema.prisma && nest build",
     "dev": "nest start --watch",
     "start": "node dist/main",
     "test": "jest",
